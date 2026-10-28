@@ -11,11 +11,11 @@
 | Host | FS-01 |
 | Data source | Synthetic Windows authentication events |
 | Detection method | Failed logons grouped into fixed five-minute windows |
-| Status | Simulated detection and manual investigation |
+| Investigation status | Simulated detection and manual investigation |
 
 ### Objective
 
-Create and evaluate a detection rule that identifies repeated failed Windows network logons from the same source IP against the same account within a five-minute window.
+Create and evaluate a detection rule that identifies repeated failed Windows logons from the same source IP against the same account within a five-minute window.
 
 The investigation aims to identify suspicious authentication activity, assess possible false positives, and recommend appropriate follow-up actions.
 
@@ -25,32 +25,32 @@ The investigation aims to identify suspicious authentication activity, assess po
 
 ## 2. Detection Logic
 
-### Detection rule
+### Detection Rule
 
 **Rule name:** Multiple Failed Network Logons per Account and Source
 
-The rule:
+The rule follows these steps:
 
-1. Examines events from host `FS-01`.
-2. Selects failed logon events with Event ID `4625`.
-3. Groups events by account, source IP, and fixed five-minute time window.
-4. Counts failed logons in each group.
-5. Generates an alert when a group contains **four or more failures**.
-6. Reviews successful logons with Event ID `4624` separately.
+1. Examine events from host `FS-01`.
+2. Select failed logon events with Event ID `4625`.
+3. Group events by account, source IP, and fixed five-minute time window.
+4. Count the failed logons in each group.
+5. Generate an alert when a group contains four or more failures.
+6. Review successful logons with Event ID `4624` separately.
 
 Successful logons are not included in the failure count.
 
-### Detection threshold
+### Detection Threshold
 
 | Setting | Value |
 |---|---|
 | Event ID | 4625 |
 | Failure threshold | 4 or more |
 | Time window | 5 minutes |
-| Grouping fields | Account, Source IP, time window |
+| Grouping fields | Account, source IP, time window |
 | Host | FS-01 |
 
-**Limitation:** The five-minute window uses fixed time buckets, not a rolling five-minute window. Activity split across two buckets may not trigger an alert even if the combined number of failures is high.
+**Limitation:** The five-minute window uses fixed time buckets, not a rolling five-minute window. Suspicious activity split across two buckets may not trigger an alert even if the combined number of failures is high.
 
 ---
 
@@ -86,11 +86,13 @@ TimeGenerated,Host,EventID,Account,SourceIP,Result
 2026-10-26T09:19:00Z,FS-01,4625,t.okon,10.20.4.31,Failure
 ```
 
-### Data limitations
+### Data Limitations
 
 This dataset contains only selected synthetic authentication events. It does not include complete endpoint telemetry, VPN records, multi-factor authentication logs, or full domain-controller activity.
 
-The addresses and accounts are used for the exercise. The dataset alone cannot prove malicious activity or account compromise.
+The account names and addresses are used for this exercise. The dataset alone cannot prove malicious activity or account compromise.
+
+The IP address `203.0.113.77` belongs to a range reserved for documentation, reinforcing that this is not evidence of a real attacker.
 
 ---
 
@@ -110,7 +112,7 @@ LabAuth
 | order by WindowStart asc, Account asc
 ```
 
-### Query explanation
+### Query Explanation
 
 - `where`: Selects failed logon events from `FS-01`.
 - `summarize`: Counts failures for each account, source IP, and time bucket.
@@ -120,7 +122,11 @@ LabAuth
 - `where Failures >= 4`: Keeps only groups meeting the alert threshold.
 - `order by`: Displays the results in chronological order.
 
-**Important:** `LabAuth` is a placeholder table name. The query will require adaptation to the actual table and field names in a configured log analytics environment. It has not been represented as a live production query.
+### Execution Status
+
+**Important:** `LabAuth` is a placeholder table name. The query illustrates the detection logic and must be adapted to the actual table and field names in a configured log analytics environment.
+
+The query has not been executed against a live log source. The results documented in this report were derived by manually applying the detection logic to the synthetic dataset.
 
 ---
 
@@ -128,7 +134,7 @@ LabAuth
 
 Applying the rule logic manually to the supplied synthetic data identifies two groups that meet the threshold.
 
-### Alert candidates
+### Alert Candidates
 
 | Account | Source IP | Five-minute window (UTC) | Failed logons | First failure | Last failure |
 |---|---|---|---:|---|---|
@@ -137,9 +143,9 @@ Applying the rule logic manually to the supplied synthetic data identifies two g
 
 Both groups exceed the configured threshold of four failures.
 
-### Events below the threshold
+### Events Below the Threshold
 
-The remaining failed logons occur in the next fixed five-minute bucket:
+The remaining failed logons occur in the next fixed five-minute bucket.
 
 | Account | Source IP | Five-minute window (UTC) | Failed logons | Result |
 |---|---|---|---:|---|
@@ -148,7 +154,7 @@ The remaining failed logons occur in the next fixed five-minute bucket:
 
 These events do not independently meet the threshold.
 
-### Successful logons
+### Successful Logons
 
 The data also contains successful logon events:
 
@@ -167,7 +173,7 @@ These successful logons are relevant context, but they are not counted as failur
 
 **Verdict:** Suspicious — further investigation required.
 
-**Reasoning:**
+#### Findings
 
 - Five failed logons occurred within the same five-minute bucket.
 - The activity exceeded the configured threshold.
@@ -176,7 +182,7 @@ These successful logons are relevant context, but they are not counted as failur
 
 The pattern warrants investigation, but the available evidence does not establish whether the activity was malicious or whether the account was compromised.
 
-**Recommended next steps:**
+#### Recommended Next Steps
 
 1. Review domain-controller authentication records for related logons.
 2. Examine endpoint process telemetry for `FS-01`.
@@ -194,19 +200,36 @@ The pattern warrants investigation, but the available evidence does not establis
 
 **Verdict:** Likely benign, subject to verification.
 
-**Reasoning:**
+#### Findings
 
 - Five failed logons occurred within the same five-minute bucket.
 - The activity met the detection threshold.
 - A successful logon followed the burst.
-- Simulated change record `CHG-206` states that `t.okon` and `10.20.4.31` were associated with an approved file-sync agent during maintenance from `09:00` to `09:30 UTC`.
-- The record states that an outdated stored password was corrected during maintenance.
+- Simulated change record `CHG-206` provides a plausible explanation for the failures.
 
-The change record provides a plausible explanation for the failures. However, the record should be validated against the relevant authentication and endpoint logs before closing the alert.
+#### Supporting Evidence — CHG-206
 
-**Recommended next steps:**
+The simulated change record provides the following context:
 
-1. Verify change record `CHG-206`.
+| Field | Details |
+|---|---|
+| Change record | CHG-206 |
+| Account | `t.okon` |
+| Source IP | `10.20.4.31` |
+| Activity | Approved file-sync agent |
+| Maintenance window | 09:00–09:30 UTC |
+| Reported issue | Outdated stored password |
+| Reported resolution | Stored password corrected during maintenance |
+
+**Assessment:** This simulated record offers a plausible explanation for the repeated authentication failures associated with `t.okon`. However, it is supporting context, not independent proof that every event was legitimate.
+
+**Verification required:** Compare the record against the relevant authentication logs, endpoint telemetry, and file-sync service logs before closing the alert as benign.
+
+**Evidence limitation:** `CHG-206` is simulated training evidence, not a real change-management ticket.
+
+#### Recommended Next Steps
+
+1. Verify the details in the simulated change record.
 2. Confirm the approved file-sync agent was running on the expected endpoint.
 3. Review authentication and service logs for matching activity.
 4. Close as likely benign only after the evidence supports the explanation.
@@ -219,13 +242,13 @@ The change record provides a plausible explanation for the failures. However, th
 
 ## 7. False Positives, False Negatives, and Tuning
 
-### Potential false positive
+### Potential False Positive
 
 A legitimate service may repeatedly fail authentication because it uses an outdated stored password.
 
 In this exercise, the simulated `CHG-206` record provides a plausible explanation for the `t.okon` activity.
 
-### Potential false negative
+### Potential False Negative
 
 A threshold-based detector may miss suspicious activity when:
 
@@ -234,7 +257,7 @@ A threshold-based detector may miss suspicious activity when:
 - Activity originates from multiple source IPs.
 - The failure count remains below the threshold.
 
-### Recommended tuning
+### Recommended Tuning
 
 - Enrich alerts with verified change-management records.
 - Review the threshold against expected authentication patterns.
@@ -244,7 +267,7 @@ A threshold-based detector may miss suspicious activity when:
 
 Changes should be tested against representative data before deployment.
 
-### Threshold test
+### Threshold Test
 
 If the threshold is increased from four failures to six, neither candidate triggers an alert because each group contains five failures.
 
@@ -254,7 +277,7 @@ This illustrates the trade-off between reducing false positives and potentially 
 
 ## 8. Investigation Limitations
 
-This investigation uses a small, synthetic dataset and has several limitations:
+This investigation uses a small synthetic dataset and has several limitations:
 
 - The events are simulated, not collected from a real Windows environment.
 - The query is illustrative and has not been run against a live log source.
@@ -263,6 +286,7 @@ This investigation uses a small, synthetic dataset and has several limitations:
 - No file-access, lateral-movement, or data-exfiltration evidence was provided.
 - The successful logons do not independently prove that either account was compromised.
 - The IP addresses do not establish the identity or location of a real attacker.
+- The change record `CHG-206` is simulated supporting evidence.
 
 Therefore, the conclusions are limited to the supplied training evidence.
 
@@ -270,7 +294,7 @@ Therefore, the conclusions are limited to the supplied training evidence.
 
 ## 9. Final Assessment
 
-The simulated detection rule successfully identifies two account/source combinations that meet the configured threshold of four failed logons within a fixed five-minute window.
+The simulated detection rule identifies two account/source combinations that meet the configured threshold of four failed logons within a fixed five-minute window.
 
 The `j.ade` activity remains suspicious because it is unexplained and is followed by a successful logon from the same source. It requires further investigation.
 
